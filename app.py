@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 from pathlib import Path
 
 from ai_doc_layer.code_parser import find_python_files, extract_functions_from_file
@@ -6,6 +7,11 @@ from ai_doc_layer.doc_generator import DocGenerator
 from ai_doc_layer.visualizer import UMLGenerator
 from ai_doc_layer.ask_cli import CodebaseAssistant
 from ai_doc_layer.impact_analyzer import ImpactAnalyzer, generate_impact_report_markdown
+from ai_doc_layer.validation import (
+    validate_directory_path,
+    check_ollama_connection,
+    validate_git_repository
+)
 
 # =============================================================================
 # PAGE CONFIG & STYLING
@@ -453,12 +459,18 @@ with tab1:
         run_btn = st.button("🚀 Generate", type="primary", use_container_width=True)
     
     if repo_path and run_btn:
-        repo = Path(repo_path).resolve()
-        
-        if not repo.exists():
-            st.error("❌ Path does not exist. Please check and try again.")
+        # Validate path
+        try:
+            repo = validate_directory_path(repo_path)
+        except (ValueError, FileNotFoundError) as e:
+            st.error(f"❌ Invalid path: {e}")
         else:
-            try:
+            # Check Ollama connection before processing
+            is_connected, error_msg = check_ollama_connection()
+            if not is_connected:
+                st.error(f"❌ {error_msg}")
+                st.info("💡 Start Ollama with: `ollama serve`")
+            else:
                 files = find_python_files(repo)
                 total_files = len(files)
                 
@@ -535,7 +547,7 @@ with tab1:
                                         st.success(f"✅ `{func.name}`")
                                     with col2:
                                         st.code(doc, language="python")
-                                except Exception as e:
+                                except (ValueError, OSError, RuntimeError) as e:
                                     st.error(f"❌ Error on `{func.name}`: {e}")
                     
                     # Completion
@@ -618,10 +630,6 @@ with tab1:
                                 mime="text/x-python",
                                 use_container_width=True
                             )
-                    
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-                st.info("💡 Make sure Ollama is running: `ollama serve`")
 
 # ---------------------------------------------------------
 # TAB 2 — UML VISUALIZER
@@ -654,10 +662,11 @@ with tab2:
         uml_btn = st.button("📊 Generate UML", type="primary", use_container_width=True)
     
     if repo_path_uml and uml_btn:
-        repo = Path(repo_path_uml).resolve()
-        
-        if not repo.exists():
-            st.error("❌ Path does not exist.")
+        # Validate path
+        try:
+            repo = validate_directory_path(repo_path_uml)
+        except (ValueError, FileNotFoundError) as e:
+            st.error(f"❌ Invalid path: {e}")
         else:
             out_file = repo / "ai_docs" / "uml.png"
             out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -717,7 +726,7 @@ with tab2:
                                     private = [m for m in info["methods"] if m.startswith("_")]
                                     st.markdown(f"**Methods:** {len(public)} public, {len(private)} private")
                     
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 st.error(f"❌ Error: {e}")
                 st.info("💡 Make sure Graphviz is installed and on PATH. Run: `winget install graphviz`")
 
@@ -810,60 +819,77 @@ with tab3:
         if not repo_c:
             st.error("⚠️ Please enter a project path first.")
         else:
-            # Add user message
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user", avatar="🧑‍💻"):
-                st.markdown(prompt)
-            
-            # Generate response
-            with st.chat_message("assistant", avatar="🤖"):
-                # Status indicators
-                status = st.status("🔍 Analyzing your codebase...", expanded=True)
-                
-                try:
-                    # Initialize or reuse assistant
-                    if "chat_assistant" not in st.session_state or st.session_state.get("chat_repo") != repo_c:
-                        status.write("📂 Indexing codebase...")
-                        st.session_state.chat_assistant = CodebaseAssistant(Path(repo_c))
-                        st.session_state.chat_repo = repo_c
+            # Validate path
+            try:
+                repo_path = validate_directory_path(repo_c)
+            except (ValueError, FileNotFoundError) as e:
+                st.error(f"❌ Invalid path: {e}")
+            else:
+                # Check Ollama connection
+                is_connected, error_msg = check_ollama_connection()
+                if not is_connected:
+                    st.error(f"❌ {error_msg}")
+                    st.info("💡 Start Ollama with: `ollama serve`")
+                else:
+                    # Add user message
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    with st.chat_message("user", avatar="🧑‍💻"):
+                        st.markdown(prompt)
                     
-                    assistant = st.session_state.chat_assistant
-                    
-                    status.write("🔎 Searching for relevant code...")
-                    status.write("🧠 Generating response with LLM...")
-                    
-                    response, sources = assistant.ask(prompt)
-                    
-                    status.update(label="✅ Response generated!", state="complete", expanded=False)
-                    
-                    # Display response
-                    st.markdown(response)
-                    
-                    # Show sources
-                    if sources:
-                        with st.expander("📚 Sources Referenced", expanded=False):
-                            for src in sources[:5]:
-                                col1, col2, col3 = st.columns([2, 2, 1])
-                                with col1:
-                                    st.markdown(f"📄 `{src['file']}`")
-                                with col2:
-                                    st.markdown(f"`{src['function']}()`")
-                                with col3:
-                                    st.markdown(f"Line {src['line']}")
-                    
-                    # Store in history
-                    st.session_state.messages.append({
-                        "role": "assistant", 
-                        "content": response,
-                        "sources": sources
-                    })
-                    
-                except Exception as e:
-                    status.update(label="❌ Error occurred", state="error", expanded=True)
-                    error_msg = f"Error: {str(e)}"
-                    st.error(error_msg)
-                    st.info("💡 Make sure Ollama is running: `ollama serve`")
-                    st.session_state.messages.append({"role": "assistant", "content": error_msg, "sources": []})
+                    # Generate response
+                    with st.chat_message("assistant", avatar="🤖"):
+                        # Status indicators
+                        status = st.status("🔍 Analyzing your codebase...", expanded=True)
+                        
+                        try:
+                            # Initialize or reuse assistant
+                            if "chat_assistant" not in st.session_state or st.session_state.get("chat_repo") != repo_c:
+                                status.write("📂 Indexing codebase...")
+                                st.session_state.chat_assistant = CodebaseAssistant(repo_path)
+                                st.session_state.chat_repo = repo_c
+                            
+                            assistant = st.session_state.chat_assistant
+                            
+                            status.write("🔎 Searching for relevant code...")
+                            status.write("🧠 Generating response with LLM...")
+                            
+                            response, sources = assistant.ask(prompt)
+                            
+                            status.update(label="✅ Response generated!", state="complete", expanded=False)
+                            
+                            # Display response
+                            st.markdown(response)
+                            
+                            # Show sources
+                            if sources:
+                                with st.expander("📚 Sources Referenced", expanded=False):
+                                    for src in sources[:5]:
+                                        col1, col2, col3 = st.columns([2, 2, 1])
+                                        with col1:
+                                            st.markdown(f"📄 `{src['file']}`")
+                                        with col2:
+                                            st.markdown(f"`{src['function']}()`")
+                                        with col3:
+                                            st.markdown(f"Line {src['line']}")
+                            
+                            # Store in history
+                            st.session_state.messages.append({
+                                "role": "assistant", 
+                                "content": response,
+                                "sources": sources
+                            })
+                            
+                        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                            status.update(label="❌ Connection Error", state="error", expanded=True)
+                            error_msg = f"Connection Error: {str(e)}"
+                            st.error(error_msg)
+                            st.info("💡 Make sure Ollama is running: `ollama serve`")
+                            st.session_state.messages.append({"role": "assistant", "content": error_msg, "sources": []})
+                        except (ValueError, RuntimeError, OSError) as e:
+                            status.update(label="❌ Error occurred", state="error", expanded=True)
+                            error_msg = f"Error: {str(e)}"
+                            st.error(error_msg)
+                            st.session_state.messages.append({"role": "assistant", "content": error_msg, "sources": []})
     
     # Empty state
     if not st.session_state.messages and repo_c:
@@ -904,6 +930,9 @@ with tab4:
     
     # Mode-specific options
     st.markdown("#### ⚙️ Options")
+    
+    # Initialize use_llm with default value (will be overridden in specific modes)
+    use_llm = False
     
     if analysis_mode == "Commit Analysis":
         col1, col2, col3 = st.columns(3)
@@ -964,13 +993,23 @@ with tab4:
     
     # Results Section
     if run_analysis and impact_repo_path:
-        repo = Path(impact_repo_path).resolve()
-        
-        if not repo.exists():
-            st.error("❌ Repository path does not exist.")
-        elif not (repo / ".git").exists():
-            st.error("❌ Not a git repository. Impact analysis requires git history.")
+        # Validate path
+        try:
+            repo = validate_directory_path(impact_repo_path)
+            validate_git_repository(repo)
+        except ValueError as e:
+            st.error(f"❌ {e}")
+        except FileNotFoundError as e:
+            st.error(f"❌ {e}")
         else:
+            # Check Ollama connection if LLM is enabled
+            if use_llm:
+                is_connected, error_msg = check_ollama_connection()
+                if not is_connected:
+                    st.warning(f"⚠️ {error_msg}")
+                    st.info("💡 Continuing without LLM analysis. Start Ollama for full semantic analysis: `ollama serve`")
+                    use_llm = False
+            
             try:
                 # Create analyzer
                 analyzer = ImpactAnalyzer(repo)
@@ -1091,15 +1130,24 @@ with tab4:
                             else:
                                 icon, color = "🟢", "#28A745"
                             
-                            with st.expander(f"{icon} **{fr.function_name}** ({fr.risk_score}) — {fr.downstream_count} downstream", expanded=(idx == 0)):
+                            with st.expander(f"{icon} **{fr.function_name}** ({fr.risk_score}) — {fr.downstream_count} downstream, {fr.upstream_count} upstream", expanded=(idx == 0)):
                                 col1, col2 = st.columns([2, 1])
                                 with col1:
                                     st.markdown(f"**File:** `{fr.file_path}` (line {fr.lineno})")
                                 with col2:
                                     st.markdown(f"<span style='color:{color};font-weight:bold;'>Risk: {fr.risk_score}</span>", unsafe_allow_html=True)
                                 
+                                # Upstream dependencies (what this function calls)
+                                if fr.upstream_functions:
+                                    st.markdown("**⬆️ Upstream Dependencies (calls):**")
+                                    for name, path, line in fr.upstream_functions[:10]:
+                                        st.markdown(f"  - `{name}` in `{Path(path).name}` (line {line})")
+                                    if len(fr.upstream_functions) > 10:
+                                        st.caption(f"... and {len(fr.upstream_functions) - 10} more")
+                                
+                                # Downstream dependencies (called by)
                                 if fr.downstream_functions:
-                                    st.markdown("**Downstream Dependencies:**")
+                                    st.markdown("**⬇️ Downstream Dependencies (called by):**")
                                     for name, path, line in fr.downstream_functions[:10]:
                                         st.markdown(f"  - `{name}` in `{Path(path).name}` (line {line})")
                                     if len(fr.downstream_functions) > 10:
@@ -1175,19 +1223,35 @@ with tab4:
                                 else:
                                     icon = "🟢"
                                 
-                                with st.expander(f"{icon} **{fr.function_name}** — {fr.downstream_count} downstream"):
+                                with st.expander(f"{icon} **{fr.function_name}** — {fr.downstream_count} downstream, {fr.upstream_count} upstream"):
                                     st.markdown(f"**Line:** {fr.lineno}")
+                                    
+                                    # Upstream dependencies
+                                    if fr.upstream_functions:
+                                        st.markdown("**⬆️ Upstream (calls):**")
+                                        for name, path, line in fr.upstream_functions[:5]:
+                                            st.markdown(f"  - `{name}` in `{Path(path).name}`")
+                                        if len(fr.upstream_functions) > 5:
+                                            st.caption(f"... and {len(fr.upstream_functions) - 5} more")
+                                    
+                                    # Downstream dependencies
                                     if fr.downstream_functions:
-                                        st.markdown("**Downstream:**")
+                                        st.markdown("**⬇️ Downstream (called by):**")
                                         for name, path, line in fr.downstream_functions[:5]:
                                             st.markdown(f"  - `{name}` in `{Path(path).name}`")
+                                        if len(fr.downstream_functions) > 5:
+                                            st.caption(f"... and {len(fr.downstream_functions) - 5} more")
+                                    
                                     if fr.risk_analysis:
                                         st.markdown("**Analysis:**")
                                         st.markdown(fr.risk_analysis)
                 
-            except Exception as e:
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                st.error(f"❌ Connection Error: {e}")
+                st.info("💡 Make sure Ollama is running: `ollama serve`")
+            except (OSError, ValueError, RuntimeError) as e:
                 st.error(f"❌ Error: {e}")
-                st.info("💡 Make sure this is a valid git repository and Ollama is running.")
+                st.info("💡 Make sure this is a valid git repository.")
     
     # Help section
     st.markdown("---")

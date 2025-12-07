@@ -23,7 +23,7 @@ class SearchIndex:
                 continue
             try:
                 funcs = extract_functions_from_file(py)
-            except Exception:
+            except (SyntaxError, OSError, ValueError):
                 text = py.read_text(encoding="utf-8")
                 self.docs.append(text)
                 self.metadata.append((py, "<module>", 1))

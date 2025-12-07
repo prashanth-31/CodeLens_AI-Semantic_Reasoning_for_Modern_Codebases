@@ -16,6 +16,12 @@ from .impact_analyzer import (
     generate_impact_report_markdown,
     generate_impact_report_json,
 )
+from .validation import (
+    validate_directory_path,
+    validate_positive_integer,
+    check_ollama_connection,
+    validate_git_repository
+)
 
 
 @click.group()
@@ -27,7 +33,19 @@ def cli():
 @click.argument("repo", type=click.Path(exists=True, file_okay=False))
 @click.option("--only-changed", is_flag=True, help="Only process files changed in last commit.")
 def generate(repo: str, only_changed: bool):
-    repo_path = Path(repo).resolve()
+    """Generate documentation for Python files in the repository."""
+    try:
+        repo_path = validate_directory_path(repo)
+    except (ValueError, FileNotFoundError) as e:
+        click.echo(f"❌ Invalid repository path: {e}", err=True)
+        return
+    
+    # Check Ollama connection
+    is_connected, error_msg = check_ollama_connection()
+    if not is_connected:
+        click.echo(f"❌ {error_msg}", err=True)
+        return
+    
     click.echo(f"Using repo: {repo_path}")
 
     doc_gen = DocGenerator()
@@ -105,7 +123,15 @@ def ask(repo: str, question: str, top_k: int):
 @click.option("--output", type=click.Choice(["markdown", "json", "console"]), default="console")
 @click.option("--out-file", type=click.Path(), default=None)
 def analyze_impact(repo: str, base: str, target: str, depth: int, output: str, out_file: Optional[str]):
-    repo_path = Path(repo).resolve()
+    """Analyze the downstream impact of code changes between commits."""
+    try:
+        repo_path = validate_directory_path(repo)
+        validate_git_repository(repo_path)
+        depth = validate_positive_integer(depth, "depth", min_value=1)
+    except (ValueError, FileNotFoundError) as e:
+        click.echo(f"❌ Invalid input: {e}", err=True)
+        return
+    
     click.echo(f"🔍 Analyzing impact: {base}..{target} in {repo_path}")
 
     try:
@@ -116,7 +142,7 @@ def analyze_impact(repo: str, base: str, target: str, depth: int, output: str, o
         click.echo("   ollama serve", err=True)
         click.echo("   ollama pull deepseek-coder:6.7b", err=True)
         return
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         click.echo(f"❌ Analysis failed: {e}", err=True)
         return
 
@@ -161,7 +187,7 @@ def analyze_file_impact(repo: str, file_path: str, depth: int):
     try:
         analyzer = ImpactAnalyzer(repo_path)
         reports = analyzer.analyze_file(fpath)
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         click.echo(f"❌ Error: {e}", err=True)
         return
 

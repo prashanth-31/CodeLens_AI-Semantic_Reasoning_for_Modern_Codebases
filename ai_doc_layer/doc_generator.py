@@ -7,8 +7,9 @@ from .ollama_client import OllamaClient
 
 
 def sanitize_docstring(raw: str) -> str:
+    """Clean and format LLM-generated docstring."""
     if not raw:
-        return '"""TODO: add documentation."""'
+        return '"""No documentation available."""'
 
     text = raw.strip()
     text = text.replace("```", "").strip()
@@ -33,7 +34,7 @@ def sanitize_docstring(raw: str) -> str:
     text = ". ".join(sentences)
 
     if not text:
-        text = "TODO: add documentation."
+        text = "Function implementation requires documentation."
 
     return f'"""{text}"""'
 

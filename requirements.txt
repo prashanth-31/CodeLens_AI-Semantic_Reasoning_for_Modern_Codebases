@@ -1,8 +1,9 @@
 click
-GitPython
+GitPython>=3.1.40
 astor
 python-dotenv
 requests
+streamlit>=1.28.0
 torch              
 transformers      
 scikit-learn        

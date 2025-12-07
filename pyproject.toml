@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codelens-ai"
+version = "0.1.0"
+description = "AI-powered semantic code impact analyzer with call-graph analysis and LLM reasoning"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "CodeLens AI Team"}
+]
+keywords = ["code-analysis", "llm", "semantic-reasoning", "impact-analysis", "documentation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Software Development :: Code Generators",
+]
+
+dependencies = [
+    "click",
+    "GitPython>=3.1.40",
+    "astor",
+    "python-dotenv",
+    "requests",
+    "streamlit>=1.28.0",
+    "torch",
+    "transformers",
+    "scikit-learn",
+    "pydot",
+    "graphviz",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+codelens = "ai_doc_layer.cli:main"
+codelens-ask = "ai_doc_layer.ask_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/prashanth-31/CodeLens_AI-Semantic_Reasoning_for_Modern_Codebases"
+Repository = "https://github.com/prashanth-31/CodeLens_AI-Semantic_Reasoning_for_Modern_Codebases"
+
+[tool.setuptools]
+packages = ["ai_doc_layer"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

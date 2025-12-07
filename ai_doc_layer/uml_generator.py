@@ -51,7 +51,7 @@ def generate_repo_uml(repo_path: Path, out_dir: Path, render_png: bool = True):
             if not mi["classes"] and not mi["functions"]:
                 continue
             modules.append((py, mi))
-        except Exception:
+        except (SyntaxError, OSError, ValueError):
             continue
 
     for py, mi in modules:
@@ -67,5 +67,5 @@ def generate_repo_uml(repo_path: Path, out_dir: Path, render_png: bool = True):
         if render_png:
             try:
                 dot.write(str(png_path), format="png")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 print(f"Error generating PNG for {py}: {e}")

@@ -102,7 +102,7 @@ class UMLGenerator:
                 continue
             try:
                 self._parse_file(py_file)
-            except Exception:
+            except (SyntaxError, OSError, ValueError):
                 continue
 
         self._analyze_dependencies()

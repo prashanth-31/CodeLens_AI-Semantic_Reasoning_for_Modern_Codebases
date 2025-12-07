@@ -1,6 +1,6 @@
 # ask_cli.py
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from .search_index import SearchIndex
 from .ollama_client import OllamaClient
 from .cache import load_from_cache, save_to_cache
@@ -21,8 +21,12 @@ class CodebaseAssistant:
         self.index.build_index(repo_path)
         self.conversation_history: List[Dict[str, str]] = []
 
-    def _build_context(self, query: str, top_k: int = DEFAULT_TOP_K) -> tuple[str, list]:
-        """Build context from relevant code snippets."""
+    def _build_context(self, query: str, top_k: int = DEFAULT_TOP_K) -> Tuple[str, List[Dict[str, any]]]:
+        """Build context from relevant code snippets.
+        
+        Returns:
+            Tuple of (context_string, sources_list) where sources is a list of dicts with file, function, line, relevance.
+        """
         hits = self.index.query(query, top_k=top_k)
         parts = []
         sources = []
@@ -68,9 +72,14 @@ class CodebaseAssistant:
         question: str, 
         top_k: int = DEFAULT_TOP_K,
         include_history: bool = True
-    ) -> tuple[str, list]:
+    ) -> Tuple[str, List[Dict[str, any]]]:
         """
         Ask a question about the codebase.
+        
+        Args:
+            question: The question to ask about the codebase
+            top_k: Number of relevant code snippets to retrieve
+            include_history: Whether to include conversation history in context
         
         Returns:
             Tuple of (answer, sources) where sources is a list of relevant code locations.
@@ -134,6 +143,6 @@ ANSWER:"""
         ]
         return suggestions
 
-    def clear_history(self):
+    def clear_history(self) -> None:
         """Clear conversation history."""
         self.conversation_history = []

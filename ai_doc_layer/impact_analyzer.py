@@ -3,8 +3,9 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 import json
+import requests
 
-from .call_graph import build_call_graph, get_downstream_dependents, FunctionNode
+from .call_graph import build_call_graph, get_downstream_dependents, get_upstream_dependencies, FunctionNode
 from .diff_analyzer import get_changed_files, get_diff_text
 from .code_parser import extract_functions_from_file, FunctionInfo
 from .ollama_client import OllamaClient
@@ -18,6 +19,8 @@ class ImpactReport:
     changed_code: str
     downstream_count: int
     downstream_functions: List[Tuple[str, str, int]]
+    upstream_count: int
+    upstream_functions: List[Tuple[str, str, int]]
     risk_analysis: str
     risk_score: str
 
@@ -51,7 +54,7 @@ class ImpactAnalyzer:
                 funcs = extract_functions_from_file(fpath)
                 for f in funcs:
                     result.append((f, fpath))
-            except Exception:
+            except (SyntaxError, OSError, ValueError):
                 continue
         return result
 
@@ -106,11 +109,19 @@ class ImpactAnalyzer:
                 dependents = get_downstream_dependents(
                     self.call_graph, [qname], max_depth=max_downstream_depth
                 )
+                # Get upstream dependencies
+                upstream = get_upstream_dependencies(
+                    self.call_graph, qname, max_depth=max_downstream_depth
+                )
             else:
                 dependents = []
+                upstream = []
 
             downstream_info = [
                 (str(d.file_path), d.name, d.lineno) for d in dependents
+            ]
+            upstream_info = [
+                (str(u.file_path), u.name, u.lineno) for u in upstream
             ]
             all_downstream.update(d.qualified_name for d in dependents)
 
@@ -126,7 +137,7 @@ class ImpactAnalyzer:
                         downstream_snippets=downstream_snippets,
                         diff_context=diff_text[:2000] if diff_text else "",
                     )
-                except Exception as e:
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, RuntimeError) as e:
                     analysis = f"Error during LLM analysis: {e}"
             elif downstream_snippets:
                 analysis = f"Found {len(dependents)} downstream dependencies. Enable LLM for detailed semantic analysis."
@@ -142,6 +153,8 @@ class ImpactAnalyzer:
                 changed_code=func.code[:500] + ("..." if len(func.code) > 500 else ""),
                 downstream_count=len(dependents),
                 downstream_functions=downstream_info,
+                upstream_count=len(upstream),
+                upstream_functions=upstream_info,
                 risk_analysis=analysis,
                 risk_score=risk_score,
             )
@@ -174,10 +187,16 @@ class ImpactAnalyzer:
                 dependents = get_downstream_dependents(
                     self.call_graph, [qname], max_depth=max_depth
                 )
+                # Get upstream dependencies
+                upstream = get_upstream_dependencies(
+                    self.call_graph, qname, max_depth=max_depth
+                )
             else:
                 dependents = []
+                upstream = []
 
             downstream_info = [(d.name, str(d.file_path) if d.file_path else "", d.lineno) for d in dependents]
+            upstream_info = [(u.name, str(u.file_path) if u.file_path else "", u.lineno) for u in upstream]
             all_downstream.update(d.name for d in dependents)
 
             # Determine risk based on downstream count
@@ -197,6 +216,8 @@ class ImpactAnalyzer:
                 changed_code=func.code[:500] if func.code else "",
                 downstream_count=len(dependents),
                 downstream_functions=downstream_info,
+                upstream_count=len(upstream),
+                upstream_functions=upstream_info,
                 risk_analysis="",
                 risk_score=risk_score,
             )
