@@ -1,0 +1,35 @@
+# Ignore virtual environment (your 'nlp' folder)
+nlp/
+lib/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment / secrets
+.env
+.env.*
+
+# Build / packaging artifacts (if you build later)
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs / temporary files
+*.log
+*.tmp
+
+# IDE/editor settings
+.vscode/
+.idea/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Optional: ignore generated docs if you keep them inside the project root
+ai_docs/
+PROJECT_OVERVIEW.md
+state.json

@@ -1,0 +1,10 @@
+click
+GitPython
+astor
+python-dotenv
+requests
+torch              
+transformers      
+scikit-learn        
+pydot              
+graphviz              
